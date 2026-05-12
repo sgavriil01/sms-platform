@@ -1,80 +1,238 @@
-# sms-platform
+# SMS Platform Microservice
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+A Java/Quarkus microservice that simulates an SMS messaging platform.
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+The service exposes REST APIs for sending SMS messages, listing stored messages, and searching message history. Each message is validated, processed through a deterministic delivery simulator, persisted in PostgreSQL, and returned to the caller with its final status.
 
-## Running the application in dev mode
+## Tech Stack
 
-You can run your application in dev mode that enables live coding using:
+- Java 21
+- Quarkus
+- Maven
+- PostgreSQL
+- Hibernate ORM with Panache
+- Jakarta Bean Validation
+- Swagger/OpenAPI
+- JUnit 5 / Mockito
+- Docker Compose
 
-```shell script
+## System Design
+
+The high-level system design is documented here:
+
+[System Design](docs/system-design.md)
+
+## Features
+
+- Send SMS messages through a REST API
+- Validate source number, destination number, and message content
+- Simulate message delivery result
+- Store messages in PostgreSQL
+- List all stored messages
+- Search messages by source number, destination number, and status
+- Structured validation and error responses
+- Swagger/OpenAPI documentation
+- Docker Compose setup for local execution
+- Unit and controller tests
+
+## Message Statuses
+
+```text
+PENDING
+DELIVERED
+FAILED
+```
+
+The delivery simulator uses a deterministic rule:
+
+```text
+Destination numbers ending with 0000 return FAILED.
+All other valid destination numbers return DELIVERED.
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/messages` | Send a new SMS message |
+| GET | `/api/messages` | List all stored messages |
+| GET | `/api/messages/search` | Search messages using optional filters |
+
+Search filters:
+
+```text
+sourceNumber
+destinationNumber
+status
+```
+
+Example:
+
+```http
+GET /api/messages/search?status=DELIVERED
+```
+
+## API Example
+
+### Send Message
+
+```http
+POST /api/messages
+Content-Type: application/json
+```
+
+```json
+{
+  "sourceNumber": "+35799123456",
+  "destinationNumber": "+35799876543",
+  "content": "Hello from SMS Platform"
+}
+```
+
+Successful responses return `201 Created` with the persisted message and final delivery status:
+
+```json
+{
+  "id": 1,
+  "sourceNumber": "+35799123456",
+  "destinationNumber": "+35799876543",
+  "content": "Hello from SMS Platform",
+  "status": "DELIVERED",
+  "errorMessage": null,
+  "createdAt": "2026-05-12T18:15:30.123",
+  "processedAt": "2026-05-12T18:15:30.124"
+}
+```
+
+## Validation
+
+| Field | Rules |
+|---|---|
+| `sourceNumber` | Required, valid phone number format |
+| `destinationNumber` | Required, valid phone number format |
+| `content` | Required, max 160 characters |
+
+Invalid requests return `400 Bad Request` with a structured error response.
+
+## Run Locally with Maven
+
+Start PostgreSQL:
+
+```bash
+docker compose up -d postgres
+```
+
+Run the application:
+
+```bash
 ./mvnw quarkus:dev
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+The API will be available at:
 
-## Packaging and running the application
-
-The application can be packaged using:
-
-```shell script
-./mvnw package
+```text
+http://localhost:8080
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+Swagger UI:
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
+```text
+http://localhost:8080/q/swagger-ui
 ```
 
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
+## Run with Docker Compose
 
-## Creating a native executable
+Package the application:
 
-You can create a native executable using:
-
-```shell script
-./mvnw package -Dnative
+```bash
+./mvnw package -DskipTests
 ```
 
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+Start the full stack:
 
-```shell script
-./mvnw package -Dnative -Dquarkus.native.container-build=true
+```bash
+docker compose up --build
 ```
 
-You can then execute your native executable with: `./target/sms-platform-1.0.0-SNAPSHOT-runner`
+This starts:
 
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
+- `sms-platform-api`
+- `sms-platform-postgres`
 
-## Related Guides
+Swagger UI:
 
-- Hibernate ORM with Panache ([guide](https://quarkus.io/guides/hibernate-orm-panache)): Simplified JPA/Hibernate data access layer with active record and repository patterns
-- REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
-- Hibernate Validator ([guide](https://quarkus.io/guides/validation)): Bean validation using Hibernate Validator and Jakarta Validation annotations
-- SmallRye OpenAPI ([guide](https://quarkus.io/guides/openapi-swaggerui)): Generate OpenAPI schemas and serve Swagger UI for REST API documentation
-- JDBC Driver - PostgreSQL ([guide](https://quarkus.io/guides/datasource)): Connect to the PostgreSQL database via JDBC
+```text
+http://localhost:8080/q/swagger-ui
+```
 
-## Provided Code
+## Database Configuration
 
-### Hibernate ORM
+Local development uses PostgreSQL through Docker Compose.
 
-Create your first JPA entity
+Host connection:
 
-[Related guide section...](https://quarkus.io/guides/hibernate-orm)
+```text
+localhost:5433
+```
 
+Container-to-container connection:
 
-[Related Hibernate with Panache section...](https://quarkus.io/guides/hibernate-orm-panache)
+```text
+postgres:5432
+```
 
+Default development credentials:
 
-### REST
+```text
+Database: sms_platform
+Username: sms_user
+Password: sms_password
+```
 
-Easily start your REST Web Services
+## Run Tests
 
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
+```bash
+./mvnw test
+```
+
+## Project Structure
+
+```text
+src/main/java/com/smsplatform
+├── controller
+├── dto
+├── exception
+├── mapper
+├── model
+├── repository
+└── service
+```
+
+## Main Design Choices
+
+- REST API for simple client integration
+- DTOs separate the API contract from database entities
+- Service layer contains business logic
+- Repository layer handles persistence
+- Mapper centralizes entity-to-response conversion
+- Delivery simulation is isolated so it can be replaced by a real provider later
+- PostgreSQL is the source of truth for message history
+- Docker Compose provides reproducible local execution
+
+## Build
+
+```bash
+./mvnw clean package
+```
+
+## Stop Services
+
+```bash
+docker compose down
+```
+
+To remove local database data as well:
+
+```bash
+docker compose down -v
+```
