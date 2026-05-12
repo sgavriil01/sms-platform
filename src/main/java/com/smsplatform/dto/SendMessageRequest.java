@@ -4,6 +4,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+/**
+ * Request body used when a client sends a new SMS message.
+ */
 public class SendMessageRequest {
 
     @NotBlank(message = "Source number is required")
