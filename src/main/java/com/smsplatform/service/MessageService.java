@@ -8,6 +8,7 @@ import com.smsplatform.model.MessageStatus;
 import com.smsplatform.repository.MessageRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.NotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,17 +19,20 @@ public class MessageService {
     private final MessageRepository messageRepository;
     private final MessageMapper messageMapper;
     private final MessageDeliverySimulator deliverySimulator;
+    private final MessageProcessingProducer messageProcessingProducer;
 
     public MessageService(MessageRepository messageRepository,
                           MessageMapper messageMapper,
-                          MessageDeliverySimulator deliverySimulator) {
+                          MessageDeliverySimulator deliverySimulator,
+                          MessageProcessingProducer messageProcessingProducer) {
         this.messageRepository = messageRepository;
         this.messageMapper = messageMapper;
         this.deliverySimulator = deliverySimulator;
+        this.messageProcessingProducer = messageProcessingProducer;
     }
 
     /**
-     * Creates, processes, stores, and returns the final message result.
+     * Creates a message, stores it as PENDING, and publishes it for async processing.
      */
     @Transactional
     public MessageResponse sendMessage(SendMessageRequest request) {
@@ -38,20 +42,44 @@ public class MessageService {
                 request.content
         );
 
-        DeliveryResult deliveryResult = deliverySimulator.simulate(request.destinationNumber);
-
-        message.status = deliveryResult.getStatus();
-        message.errorMessage = deliveryResult.getErrorMessage();
-        message.processedAt = LocalDateTime.now();
-
         messageRepository.persist(message);
+        messageProcessingProducer.publish(message.id);
 
         return messageMapper.toResponse(message);
     }
 
     /**
-     * Returns all stored messages.
+     * Processes a stored message and updates it with the final simulated delivery result.
      */
+    @Transactional
+    public void processMessage(Long messageId) {
+        Message message = messageRepository.findById(messageId);
+
+        if (message == null) {
+            throw new NotFoundException("Message not found with id: " + messageId);
+        }
+
+        if (message.status != MessageStatus.PENDING) {
+            return;
+        }
+
+        DeliveryResult deliveryResult = deliverySimulator.simulate(message.destinationNumber);
+
+        message.status = deliveryResult.getStatus();
+        message.errorMessage = deliveryResult.getErrorMessage();
+        message.processedAt = LocalDateTime.now();
+    }
+
+    public MessageResponse getMessageById(Long id) {
+        Message message = messageRepository.findById(id);
+
+        if (message == null) {
+            throw new NotFoundException("Message not found with id: " + id);
+        }
+
+        return messageMapper.toResponse(message);
+    }
+
     public List<MessageResponse> listMessages() {
         return messageRepository.listAll()
                 .stream()
@@ -59,9 +87,6 @@ public class MessageService {
                 .toList();
     }
 
-    /**
-     * Searches stored messages using optional filters.
-     */
     public List<MessageResponse> searchMessages(String sourceNumber,
                                                 String destinationNumber,
                                                 MessageStatus status) {

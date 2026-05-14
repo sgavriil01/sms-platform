@@ -32,14 +32,14 @@ public class MessageController {
     @POST
     @Operation(summary = "Send a new SMS message")
     @APIResponses({
-        @APIResponse(responseCode = "201", description = "Message created and processed"),
+        @APIResponse(responseCode = "202", description = "Message accepted for asynchronous processing"),
         @APIResponse(responseCode = "400", description = "Invalid message request")
 })
     public Response sendMessage(@Valid SendMessageRequest request) {
         MessageResponse response = messageService.sendMessage(request);
 
         return Response
-                .status(Response.Status.CREATED)
+                .status(Response.Status.ACCEPTED)
                 .entity(response)
                 .build();
     }
@@ -70,5 +70,17 @@ public class MessageController {
             @QueryParam("status") MessageStatus status
     ) {
         return messageService.searchMessages(sourceNumber, destinationNumber, status);
+    }
+
+    /**
+     * Returns one stored message by ID.
+     */
+    @GET
+    @Path("/{id}")
+    @Operation(summary = "Get a message by ID")
+    @APIResponse(responseCode = "200", description = "Message returned successfully")
+    @APIResponse(responseCode = "404", description = "Message not found")
+    public MessageResponse getMessageById(@PathParam("id") Long id) {
+        return messageService.getMessageById(id);
     }
 }

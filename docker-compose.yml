@@ -33,10 +33,11 @@ services:
       - "0"
       - --check=false
       - --kafka-addr
-      - PLAINTEXT://0.0.0.0:9092
+      - INTERNAL://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
       - --advertise-kafka-addr
-      - PLAINTEXT://redpanda:9092
+      - INTERNAL://redpanda:9092,OUTSIDE://localhost:19092
     ports:
+      - "19092:19092"
       - "9092:9092"
 
   sms-platform:

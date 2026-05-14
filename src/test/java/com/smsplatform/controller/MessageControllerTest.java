@@ -17,7 +17,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @QuarkusTest
@@ -27,16 +27,16 @@ class MessageControllerTest {
     MessageService messageService;
 
     @Test
-    void shouldSendMessageAndReturnCreated() {
+    void shouldSendMessageAndReturnAccepted() {
         MessageResponse response = new MessageResponse(
                 1L,
                 "+35799123456",
                 "+35799876543",
                 "Hello",
-                MessageStatus.DELIVERED,
+                MessageStatus.PENDING,
                 null,
                 LocalDateTime.now(),
-                LocalDateTime.now()
+                null
         );
 
         when(messageService.sendMessage(any(SendMessageRequest.class)))
@@ -54,13 +54,14 @@ class MessageControllerTest {
                 .when()
                 .post("/api/messages")
                 .then()
-                .statusCode(201)
+                .statusCode(202)
                 .body("id", is(1))
                 .body("sourceNumber", is("+35799123456"))
                 .body("destinationNumber", is("+35799876543"))
                 .body("content", is("Hello"))
-                .body("status", is("DELIVERED"))
-                .body("errorMessage", nullValue());
+                .body("status", is("PENDING"))
+                .body("errorMessage", nullValue())
+                .body("processedAt", nullValue());
     }
 
     @Test
@@ -81,6 +82,31 @@ class MessageControllerTest {
                 .body("error", is("Validation failed"))
                 .body("message", is("The request contains invalid fields"))
                 .body("details", not(empty()));
+    }
+
+    @Test
+    void shouldGetMessageById() {
+        MessageResponse response = new MessageResponse(
+                1L,
+                "+35799123456",
+                "+35799876543",
+                "Hello",
+                MessageStatus.DELIVERED,
+                null,
+                LocalDateTime.now(),
+                LocalDateTime.now()
+        );
+
+        when(messageService.getMessageById(1L))
+                .thenReturn(response);
+
+        given()
+                .when()
+                .get("/api/messages/1")
+                .then()
+                .statusCode(200)
+                .body("id", is(1))
+                .body("status", is("DELIVERED"));
     }
 
     @Test
