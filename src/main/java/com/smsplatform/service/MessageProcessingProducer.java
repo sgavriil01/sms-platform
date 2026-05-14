@@ -15,6 +15,9 @@ public class MessageProcessingProducer {
         this.emitter = emitter;
     }
 
+    /**
+     * Publishes the message ID so a Kafka consumer can process the stored message asynchronously.
+     */
     public void publish(Long messageId) {
         emitter.send(new MessageProcessingEvent(messageId));
     }

@@ -2,7 +2,7 @@
 
 A Java/Quarkus microservice that simulates an SMS messaging platform.
 
-The service exposes REST APIs for sending SMS messages, listing stored messages, and searching message history. Each message is validated, processed through a deterministic delivery simulator, persisted in PostgreSQL, and returned to the caller with its final status.
+The service exposes REST APIs for sending SMS messages, listing stored messages, retrieving messages by ID, and searching message history. Each message is validated, stored in PostgreSQL with `PENDING` status, published to Kafka-compatible messaging through Redpanda, processed asynchronously, and later updated to `DELIVERED` or `FAILED`.
 
 ## Tech Stack
 
@@ -11,6 +11,7 @@ The service exposes REST APIs for sending SMS messages, listing stored messages,
 - Maven
 - PostgreSQL
 - Hibernate ORM with Panache
+- Kafka-compatible messaging with Redpanda
 - Jakarta Bean Validation
 - Swagger/OpenAPI
 - JUnit 5 / Mockito
@@ -26,8 +27,11 @@ The high-level system design is documented here:
 
 - Send SMS messages through a REST API
 - Validate source number, destination number, and message content
-- Simulate message delivery result
 - Store messages in PostgreSQL
+- Publish message-processing events to Kafka/Redpanda
+- Process messages asynchronously
+- Simulate final delivery result
+- Retrieve a message by ID
 - List all stored messages
 - Search messages by source number, destination number, and status
 - Structured validation and error responses
@@ -43,6 +47,8 @@ DELIVERED
 FAILED
 ```
 
+A new message is first stored as `PENDING`. The Kafka consumer then processes it and updates the status to `DELIVERED` or `FAILED`.
+
 The delivery simulator uses a deterministic rule:
 
 ```text
@@ -54,7 +60,8 @@ All other valid destination numbers return DELIVERED.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/messages` | Send a new SMS message |
+| POST | `/api/messages` | Accept a new SMS message for asynchronous processing |
+| GET | `/api/messages/{id}` | Retrieve one message by ID |
 | GET | `/api/messages` | List all stored messages |
 | GET | `/api/messages/search` | Search messages using optional filters |
 
@@ -89,7 +96,28 @@ Content-Type: application/json
 }
 ```
 
-Successful responses return `201 Created` with the persisted message and final delivery status:
+Successful requests return `202 Accepted` with the persisted message in `PENDING` status:
+
+```json
+{
+  "id": 1,
+  "sourceNumber": "+35799123456",
+  "destinationNumber": "+35799876543",
+  "content": "Hello from SMS Platform",
+  "status": "PENDING",
+  "errorMessage": null,
+  "createdAt": "2026-05-12T18:15:30.123",
+  "processedAt": null
+}
+```
+
+The caller can check completion by retrieving the message:
+
+```http
+GET /api/messages/1
+```
+
+After asynchronous processing, the message status becomes `DELIVERED` or `FAILED`:
 
 ```json
 {
@@ -100,7 +128,7 @@ Successful responses return `201 Created` with the persisted message and final d
   "status": "DELIVERED",
   "errorMessage": null,
   "createdAt": "2026-05-12T18:15:30.123",
-  "processedAt": "2026-05-12T18:15:30.124"
+  "processedAt": "2026-05-12T18:15:30.456"
 }
 ```
 
@@ -116,10 +144,10 @@ Invalid requests return `400 Bad Request` with a structured error response.
 
 ## Run Locally with Maven
 
-Start PostgreSQL:
+Start PostgreSQL and Redpanda:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres redpanda
 ```
 
 Run the application:
@@ -158,6 +186,7 @@ This starts:
 
 - `sms-platform-api`
 - `sms-platform-postgres`
+- `sms-platform-redpanda`
 
 Swagger UI:
 
@@ -165,20 +194,30 @@ Swagger UI:
 http://localhost:8080/q/swagger-ui
 ```
 
-## Database Configuration
+## Local Service Configuration
 
-Local development uses PostgreSQL through Docker Compose.
-
-Host connection:
+PostgreSQL host connection:
 
 ```text
 localhost:5433
 ```
 
-Container-to-container connection:
+PostgreSQL container-to-container connection:
 
 ```text
 postgres:5432
+```
+
+Redpanda/Kafka host connection:
+
+```text
+localhost:19092
+```
+
+Redpanda/Kafka container-to-container connection:
+
+```text
+redpanda:9092
 ```
 
 Default development credentials:
@@ -190,6 +229,14 @@ Password: sms_password
 ```
 
 ## Run Tests
+
+Make sure PostgreSQL and Redpanda are running:
+
+```bash
+docker compose up -d postgres redpanda
+```
+
+Then run:
 
 ```bash
 ./mvnw test
@@ -211,12 +258,14 @@ src/main/java/com/smsplatform
 ## Main Design Choices
 
 - REST API for simple client integration
+- `202 Accepted` for asynchronous message submission
+- PostgreSQL as the source of truth for message state
+- Kafka/Redpanda for decoupled asynchronous processing
 - DTOs separate the API contract from database entities
 - Service layer contains business logic
 - Repository layer handles persistence
 - Mapper centralizes entity-to-response conversion
 - Delivery simulation is isolated so it can be replaced by a real provider later
-- PostgreSQL is the source of truth for message history
 - Docker Compose provides reproducible local execution
 
 ## Build
